@@ -307,18 +307,22 @@ struct ContentView: View {
         case .preparing:
             return model.currentStage
         case .writing:
-            return "Записываем тестовые данные · \(transferredText)"
+            return "Записано \(transferredText)"
         case .reading:
-            return "Читаем тестовые данные · \(transferredText)"
+            return "Прочитано \(transferredText)"
         default:
             return nil
         }
     }
 
     private var transferredText: String {
-        let transferred = Int64((Double(model.testSize.rawValue) * model.progress).rounded())
-        let completed = ByteCountFormatter.string(fromByteCount: transferred, countStyle: .file)
-        return "\(completed) из \(model.testSize.title)"
+        let completed = model.transferredBytes.formatted(
+            .number.grouping(.automatic).locale(Locale(identifier: "ru_RU"))
+        )
+        let total = model.testSize.rawValue.formatted(
+            .number.grouping(.automatic).locale(Locale(identifier: "ru_RU"))
+        )
+        return "\(completed) байт из \(total)"
     }
 }
 

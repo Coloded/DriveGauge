@@ -119,8 +119,10 @@ struct Speedometer: View {
                 let labelPoint = point(center: center, radius: radius - 55, angle: angle)
                 let value = maximum * fraction
                 let label: String
-                if speed > 0, speed < 1 {
-                    label = String(format: "%.0f", value * 1_000)
+                if maximum < 10 {
+                    label = value == value.rounded()
+                        ? String(format: "%.0f", value)
+                        : String(format: "%.1f", value)
                 } else {
                     label = value >= 1_000 ? String(format: "%.0fk", value / 1_000) : String(format: "%.0f", value)
                 }

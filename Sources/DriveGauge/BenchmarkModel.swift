@@ -9,6 +9,7 @@ final class BenchmarkModel: ObservableObject {
     @Published private(set) var phase: BenchmarkPhase = .idle
     @Published private(set) var currentSpeed = 0.0
     @Published private(set) var progress = 0.0
+    @Published private(set) var transferredBytes: Int64 = 0
     @Published private(set) var currentStage = ""
     @Published private(set) var writeSpeed: Double?
     @Published private(set) var readSpeed: Double?
@@ -74,6 +75,7 @@ final class BenchmarkModel: ObservableObject {
         phase = .idle
         currentSpeed = 0
         progress = 0
+        transferredBytes = 0
         currentStage = ""
         loadHistory()
         refreshSMART()
@@ -118,6 +120,7 @@ final class BenchmarkModel: ObservableObject {
             phase = .idle
             currentSpeed = 0
             progress = 0
+            transferredBytes = 0
             return
         }
         startTest()
@@ -133,6 +136,7 @@ final class BenchmarkModel: ObservableObject {
         selectedHistoryID = nil
         currentSpeed = 0
         progress = 0
+        transferredBytes = 0
         currentStage = "Проверка диска"
         phase = .preparing
 
@@ -156,6 +160,7 @@ final class BenchmarkModel: ObservableObject {
         phase = update.phase
         currentSpeed = update.currentMBps
         progress = update.progress
+        transferredBytes = update.transferredBytes
         currentStage = update.stage
         if let metric = update.completedMetric,
            !completedMetrics.contains(where: { $0.id == metric.id }) {
@@ -179,6 +184,7 @@ final class BenchmarkModel: ObservableObject {
         phase = .finished
         currentSpeed = result.readMBps
         progress = 1
+        transferredBytes = testSize.rawValue
         benchmarkTask = nil
         if let volume = selectedVolume, let store {
             do {
@@ -197,6 +203,7 @@ final class BenchmarkModel: ObservableObject {
         phase = .failed(error.localizedDescription)
         currentSpeed = 0
         progress = 0
+        transferredBytes = 0
         benchmarkTask = nil
     }
 
@@ -204,6 +211,7 @@ final class BenchmarkModel: ObservableObject {
         phase = .idle
         currentSpeed = 0
         progress = 0
+        transferredBytes = 0
         benchmarkTask = nil
     }
 
@@ -239,6 +247,7 @@ final class BenchmarkModel: ObservableObject {
         readSpeed = record.result.readMBps
         currentSpeed = record.result.readMBps
         progress = 1
+        transferredBytes = record.size.rawValue
         phase = .finished
         currentStage = "Сохранённый тест"
     }
