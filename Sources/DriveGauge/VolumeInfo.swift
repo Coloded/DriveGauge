@@ -84,7 +84,9 @@ enum VolumeScanner {
             let importantAvailable = values.volumeAvailableCapacityForImportantUsage
             let available = [statAvailable, reportedAvailable, importantAvailable]
                 .compactMap { $0 }
-                .filter { $0 > 0 }
+                // Zero is a valid and safety-critical answer: never discard it
+                // in favour of a larger, stale value reported by another API.
+                .filter { $0 >= 0 }
                 .min()
             let reportedTotal = values.volumeTotalCapacity.map(Int64.init)
             let total = reportedTotal.flatMap { $0 > 0 ? $0 : nil }

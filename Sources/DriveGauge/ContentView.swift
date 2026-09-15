@@ -151,7 +151,11 @@ struct ContentView: View {
                 .frame(width: 290)
 
                 VStack(spacing: 12) {
-                    Speedometer(speed: model.currentSpeed, phase: model.phase)
+                    Speedometer(
+                        speed: model.currentSpeed,
+                        phase: model.phase,
+                        detail: speedometerDetail
+                    )
                         .frame(maxWidth: 520, maxHeight: 350)
 
                     HStack(spacing: 12) {
@@ -297,6 +301,25 @@ struct ContentView: View {
             return "Будет создан и автоматически удалён временный файл \(model.testSize.title)"
         }
     }
+
+    private var speedometerDetail: String? {
+        switch model.phase {
+        case .preparing:
+            return model.currentStage
+        case .writing:
+            return "Записываем тестовые данные · \(transferredText)"
+        case .reading:
+            return "Читаем тестовые данные · \(transferredText)"
+        default:
+            return nil
+        }
+    }
+
+    private var transferredText: String {
+        let transferred = Int64((Double(model.testSize.rawValue) * model.progress).rounded())
+        let completed = ByteCountFormatter.string(fromByteCount: transferred, countStyle: .file)
+        return "\(completed) из \(model.testSize.title)"
+    }
 }
 
 private struct TestHistoryPanel: View {
@@ -404,12 +427,13 @@ private struct TestHistoryPanel: View {
                     historyValue("ЧТЕНИЕ", metric.readMBps, metric.readIOPS, .cyan, profile.random)
                 }
             } else if active {
+                let display = SpeedDisplay.make(currentSpeed)
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Text(String(format: "%.1f", currentSpeed))
+                    Text(display.value)
                         .font(.system(size: 22, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .contentTransition(.numericText())
-                    Text("MB/s").font(.caption).foregroundStyle(.secondary)
+                    Text(display.unit).font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Text("выполняется")
                         .font(.caption2)
@@ -436,12 +460,13 @@ private struct TestHistoryPanel: View {
         _ title: String, _ speed: Double, _ iops: Double,
         _ color: Color, _ showsIOPS: Bool
     ) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let display = SpeedDisplay.make(speed)
+        return VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.system(size: 8, weight: .bold))
                 .tracking(0.7)
                 .foregroundStyle(color)
-            Text(String(format: "%.1f MB/s", speed))
+            Text("\(display.value) \(display.unit)")
                 .font(.system(size: 13, weight: .bold, design: .rounded))
                 .monospacedDigit()
             if showsIOPS {
@@ -629,6 +654,8 @@ private struct ResultCard: View {
     let progress: Double?
     let icon: String
 
+    private var speedDisplay: SpeedDisplay { .make(value) }
+
     var body: some View {
         HStack(spacing: 13) {
             Image(systemName: icon)
@@ -642,10 +669,10 @@ private struct ResultCard: View {
                     .tracking(1.2)
                     .foregroundStyle(.secondary)
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Text(value.map { String(format: "%.1f", $0) } ?? "—")
+                    Text(speedDisplay.value)
                         .font(.system(size: 24, weight: .bold, design: .rounded))
                         .contentTransition(.numericText())
-                    Text("MB/s")
+                    Text(speedDisplay.unit)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
@@ -853,15 +880,16 @@ private struct TestHistoryView: View {
     }
 
     private func historySpeed(_ title: String, _ value: Double, _ color: Color) -> some View {
-        VStack(alignment: .trailing, spacing: 2) {
+        let display = SpeedDisplay.make(value)
+        return VStack(alignment: .trailing, spacing: 2) {
             Text(title)
                 .font(.system(size: 8, weight: .bold))
                 .tracking(0.7)
                 .foregroundStyle(color)
-            Text(String(format: "%.1f", value))
+            Text(display.value)
                 .font(.system(size: 15, weight: .bold, design: .rounded))
                 .monospacedDigit()
-            Text("MB/s")
+            Text(display.unit)
                 .font(.system(size: 8))
                 .foregroundStyle(.secondary)
         }
@@ -963,7 +991,7 @@ private struct BenchmarkResultsView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Подробные результаты").font(.title2.bold())
-                    Text("Медиана проходов; MB/s — десятичные мегабайты").foregroundStyle(.secondary)
+                    Text("Медиана проходов; единицы меняются автоматически").foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("Готово") { dismiss() }
@@ -986,8 +1014,8 @@ private struct BenchmarkResultsView: View {
                                 Text(metric.title).font(.headline)
                                 Text("\(metric.iterations) проход(а)").font(.caption2).foregroundStyle(.secondary)
                             }
-                            Text(String(format: "%.1f MB/s", metric.writeMBps)).monospacedDigit()
-                            Text(String(format: "%.1f MB/s", metric.readMBps)).monospacedDigit()
+                            Text(speedText(metric.writeMBps)).monospacedDigit()
+                            Text(speedText(metric.readMBps)).monospacedDigit()
                             Text(String(format: "%.0f", metric.writeIOPS)).monospacedDigit()
                             Text(String(format: "%.0f", metric.readIOPS)).monospacedDigit()
                         }
@@ -1000,5 +1028,10 @@ private struct BenchmarkResultsView: View {
         }
         .padding(24)
         .frame(width: 780, height: 390)
+    }
+
+    private func speedText(_ value: Double) -> String {
+        let display = SpeedDisplay.make(value)
+        return "\(display.value) \(display.unit)"
     }
 }

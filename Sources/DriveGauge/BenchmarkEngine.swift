@@ -140,7 +140,7 @@ enum BenchmarkEngine {
         try Task.checkCancellation()
         await reporter(.init(phase: .preparing, currentMBps: 0, progress: 0, stage: "Проверка диска", completedMetric: nil))
 
-        let values = try? volumeURL.resourceValues(forKeys: [.volumeIsReadOnlyKey])
+        let values = try? volumeURL.resourceValues(forKeys: [.volumeIsReadOnlyKey, .volumeIsLocalKey])
         if let error = preflightError(at: volumeURL, declaredReadOnly: values?.volumeIsReadOnly == true, byteCount: byteCount) {
             throw error
         }
@@ -158,7 +158,18 @@ enum BenchmarkEngine {
             unlink(path)
         }
 
-        try preallocate(descriptor: descriptor, byteCount: byteCount)
+        await reporter(.init(
+            phase: .preparing, currentMBps: 0, progress: 0,
+            stage: values?.volumeIsLocal == false
+                ? "Создаём тестовый файл на сетевом диске"
+                : "Выделяем место для тестового файла",
+            completedMetric: nil
+        ))
+        try preallocate(
+            descriptor: descriptor,
+            byteCount: byteCount,
+            useNativePreallocation: values?.volumeIsLocal != false
+        )
         configureUncached(descriptor: descriptor, disableReadAhead: false)
 
         let profiles = workloads(for: mode)
@@ -260,15 +271,24 @@ enum BenchmarkEngine {
         return metrics.first { $0.id == id } ?? metrics.first
     }
 
-    private static func preallocate(descriptor: Int32, byteCount: Int64) throws {
-        var store = fstore_t(
-            fst_flags: UInt32(F_ALLOCATECONTIG | F_ALLOCATEALL),
-            fst_posmode: F_PEOFPOSMODE, fst_offset: 0,
-            fst_length: off_t(byteCount), fst_bytesalloc: 0
-        )
-        if fcntl(descriptor, F_PREALLOCATE, &store) == -1 {
-            store.fst_flags = UInt32(F_ALLOCATEALL)
-            _ = fcntl(descriptor, F_PREALLOCATE, &store)
+    private static func preallocate(
+        descriptor: Int32,
+        byteCount: Int64,
+        useNativePreallocation: Bool
+    ) throws {
+        // F_PREALLOCATE can block for a long time on SMB/NFS and provides no
+        // progress. Network files are sized with ftruncate and allocated by
+        // the server as the measured writes arrive.
+        if useNativePreallocation {
+            var store = fstore_t(
+                fst_flags: UInt32(F_ALLOCATECONTIG | F_ALLOCATEALL),
+                fst_posmode: F_PEOFPOSMODE, fst_offset: 0,
+                fst_length: off_t(byteCount), fst_bytesalloc: 0
+            )
+            if fcntl(descriptor, F_PREALLOCATE, &store) == -1 {
+                store.fst_flags = UInt32(F_ALLOCATEALL)
+                _ = fcntl(descriptor, F_PREALLOCATE, &store)
+            }
         }
         guard ftruncate(descriptor, off_t(byteCount)) == 0 else {
             throw BenchmarkError.posix(operation: "Выделение места для теста", code: errno)

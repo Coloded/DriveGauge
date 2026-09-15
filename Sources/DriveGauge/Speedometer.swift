@@ -3,8 +3,15 @@ import SwiftUI
 struct Speedometer: View {
     let speed: Double
     let phase: BenchmarkPhase
+    let detail: String?
+
+    private var speedDisplay: SpeedDisplay { .make(speed) }
 
     private var maximum: Double {
+        if speed > 0, speed < 1 {
+            let slowCandidates: [Double] = [0.1, 0.25, 0.5, 1, 2]
+            return slowCandidates.first(where: { speed <= $0 * 0.88 }) ?? 2
+        }
         let candidates: [Double] = [50, 100, 250, 500, 1_000, 2_000, 4_000, 8_000, 16_000]
         return candidates.first(where: { speed <= $0 * 0.88 }) ?? 20_000
     }
@@ -51,20 +58,29 @@ struct Speedometer: View {
                         .font(.caption2.weight(.bold))
                         .tracking(1.8)
                         .foregroundStyle(phaseColor)
-                    Text(String(format: "%.1f", speed))
+                    Text(speedDisplay.value)
                         .font(.system(size: side * 0.105, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .contentTransition(.numericText())
-                    Text("MB/s")
+                    Text(speedDisplay.unit)
                         .font(.system(size: side * 0.027, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
+                    if let detail, !detail.isEmpty {
+                        Text(detail)
+                            .font(.system(size: side * 0.021, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .frame(maxWidth: radius * 1.35)
+                            .padding(.top, 3)
+                    }
                 }
-                .position(x: center.x, y: center.y + radius * 0.47)
+                .position(x: center.x, y: center.y + radius * 0.43)
 
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Скорость \(speed, specifier: "%.1f") мегабайт в секунду, \(phase.title)")
+        .accessibilityLabel("Скорость \(speedDisplay.value) \(speedDisplay.unit), \(phase.title)")
     }
 
     private var phaseColor: Color {
@@ -102,7 +118,12 @@ struct Speedometer: View {
             if major {
                 let labelPoint = point(center: center, radius: radius - 55, angle: angle)
                 let value = maximum * fraction
-                let label = value >= 1_000 ? String(format: "%.0fk", value / 1_000) : String(format: "%.0f", value)
+                let label: String
+                if speed > 0, speed < 1 {
+                    label = String(format: "%.0f", value * 1_000)
+                } else {
+                    label = value >= 1_000 ? String(format: "%.0fk", value / 1_000) : String(format: "%.0f", value)
+                }
                 context.draw(
                     Text(label).font(.system(size: 10, weight: .medium, design: .rounded)).foregroundColor(.secondary),
                     at: labelPoint,
