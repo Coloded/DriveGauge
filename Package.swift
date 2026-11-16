@@ -5,9 +5,20 @@ let package = Package(
     name: "DriveGauge",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "DriveGauge", targets: ["DriveGauge"])
+        .executable(name: "DriveGauge", targets: ["DriveGauge"]),
+        .executable(name: "DriveGaugeNetworkWorker", targets: ["DriveGaugeNetworkWorker"]),
+        .executable(name: "NetworkBenchmarkSelfTests", targets: ["NetworkBenchmarkSelfTests"])
     ],
     targets: [
+        .target(
+            name: "NetworkBenchmarkProtocol",
+            path: "Sources/NetworkBenchmarkProtocol"
+        ),
+        .target(
+            name: "BenchmarkPersistence",
+            dependencies: ["CSQLite"],
+            path: "Sources/BenchmarkPersistence"
+        ),
         .systemLibrary(
             name: "CSQLite",
             path: "Sources/CSQLite"
@@ -23,8 +34,18 @@ let package = Package(
         ),
         .executableTarget(
             name: "DriveGauge",
-            dependencies: ["DriveSMART", "CSQLite"],
+            dependencies: ["DriveSMART", "CSQLite", "NetworkBenchmarkProtocol", "BenchmarkPersistence"],
             path: "Sources/DriveGauge"
+        ),
+        .executableTarget(
+            name: "DriveGaugeNetworkWorker",
+            dependencies: ["NetworkBenchmarkProtocol"],
+            path: "Sources/DriveGaugeNetworkWorker"
+        ),
+        .executableTarget(
+            name: "NetworkBenchmarkSelfTests",
+            dependencies: ["NetworkBenchmarkProtocol", "BenchmarkPersistence", "CSQLite"],
+            path: "Tests/NetworkBenchmarkProtocolTests"
         )
     ]
 )

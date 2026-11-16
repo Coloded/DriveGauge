@@ -3,20 +3,26 @@
     <channel>
         <title>DriveGauge</title>
         <item>
-            <title>1.1.2</title>
-            <pubDate>Tue, 15 Sep 2026 14:17:42 +0300</pubDate>
+            <title>1.2.0</title>
+            <pubDate>Mon, 16 Nov 2026 13:03:53 +0300</pubDate>
             <link>https://github.com/Coloded/DriveGauge</link>
-            <sparkle:version>18</sparkle:version>
-            <sparkle:shortVersionString>1.1.2</sparkle:shortVersionString>
+            <sparkle:version>19</sparkle:version>
+            <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# DriveGauge 1.1.2
+            <description sparkle:format="markdown"><![CDATA[# DriveGauge 1.2.0
 
-- Под скоростью отображается точный живой счётчик записанных или прочитанных байтов.
-- Скорость всегда отображается в MB/s; по движению счётчика байтов видно, передаются ли данные.
-- Шкала спидометра остаётся чувствительной даже на очень медленных сетевых дисках.
+- Добавлен отдельный адаптивный тест сетевых дисков SMB, NFS и WebDAV.
+- Сетевой ввод-вывод выполняется в изолированном worker-процессе и не блокирует интерфейс.
+- Объём теста автоматически подстраивается под скорость соединения и выбранный максимум.
+- Показываются точные записанные и прочитанные байты, прошедшее время, ETA и отсутствие передачи.
+- Watchdog автоматически останавливает зависший сервер; ручная остановка ограничена по времени.
+- Временный файл создаётся через `O_EXCL` с UUID и удаляется только по точному пути текущего запуска.
+- История SQLite хранит тип сети, фактический объём, длительности и версию алгоритма.
+- Добавлены диагностика, безопасная миграция базы и расширенные тесты сетевого движка.
+- Сборка предназначена только для Apple Silicon (`arm64`).
 ]]></description>
-            <enclosure url="https://github.com/Coloded/DriveGauge/releases/latest/download/DriveGauge-stable.dmg" length="4038218" type="application/octet-stream" sparkle:edSignature="uh9s5gcUYCIvy+PGxgPr7o0uc/rD5uwACrCwmUperHkcgQtXwvztwwlGejRHsbINqakbCricF15Imc3b9M/pDA=="/>
+            <enclosure url="https://github.com/Coloded/DriveGauge/releases/latest/download/DriveGauge-stable.dmg" length="4175335" type="application/octet-stream" sparkle:edSignature="p+B2NbVkF8Atqt6gnXqkdB+p0m+/uWfxV/UzEVyfSkgkftNfjpX6JMxhQ19XW5ePK/cwW2wdlehaEiyHMIn1AA=="/>
         </item>
     </channel>
 </rss>

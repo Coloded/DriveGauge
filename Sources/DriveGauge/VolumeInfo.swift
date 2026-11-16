@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import NetworkBenchmarkProtocol
 
 enum FileSystemCapacity {
     static func availableBytes(at url: URL) -> Int64? {
@@ -28,6 +29,7 @@ struct VolumeInfo: Identifiable, Hashable, Sendable {
     let url: URL
     let name: String
     let format: String
+    let fileSystemType: String?
     let totalBytes: Int64?
     let availableBytes: Int64?
     let isLocal: Bool
@@ -36,7 +38,10 @@ struct VolumeInfo: Identifiable, Hashable, Sendable {
     let isReadOnly: Bool
 
     var kind: String {
-        if !isLocal { return "Сетевой" }
+        if !isLocal {
+            guard let fileSystemType, !fileSystemType.isEmpty else { return "Сетевой" }
+            return "Сетевой · \(fileSystemType.uppercased())"
+        }
         if isInternal { return "Встроенный" }
         if isRemovable { return "USB / внешний" }
         return "Внешний"
@@ -60,6 +65,14 @@ struct VolumeInfo: Identifiable, Hashable, Sendable {
 }
 
 enum VolumeScanner {
+    static func fileSystemType(at url: URL) -> String? {
+        var information = statfs()
+        guard url.path.withCString({ statfs($0, &information) }) == 0 else { return nil }
+        return withUnsafePointer(to: &information.f_fstypename) {
+            $0.withMemoryRebound(to: CChar.self, capacity: Int(MFSNAMELEN)) { String(cString: $0) }
+        }
+    }
+
     static func mountedVolumes(fileManager: FileManager = .default) -> [VolumeInfo] {
         let keys: [URLResourceKey] = [
             .volumeNameKey, .volumeLocalizedFormatDescriptionKey,
@@ -79,6 +92,8 @@ enum VolumeScanner {
                   values.volumeIsBrowsable != false else { return nil }
 
             let name = values.volumeName ?? url.lastPathComponent
+            let fsType = fileSystemType(at: url)
+            let isRemoteType = NetworkFileSystemClassification.isRemote(fsType)
             let statAvailable = FileSystemCapacity.availableBytes(at: url)
             let reportedAvailable = values.volumeAvailableCapacity.map(Int64.init)
             let importantAvailable = values.volumeAvailableCapacityForImportantUsage
@@ -96,9 +111,10 @@ enum VolumeScanner {
                 url: url,
                 name: name.isEmpty ? "Macintosh HD" : name,
                 format: values.volumeLocalizedFormatDescription ?? "Файловая система",
+                fileSystemType: fsType,
                 totalBytes: total,
                 availableBytes: available,
-                isLocal: values.volumeIsLocal ?? true,
+                isLocal: isRemoteType ? false : (values.volumeIsLocal ?? true),
                 isInternal: values.volumeIsInternal ?? false,
                 isRemovable: values.volumeIsRemovable ?? false,
                 isReadOnly: values.volumeIsReadOnly ?? false

@@ -38,7 +38,7 @@ enum BenchmarkMode: String, CaseIterable, Identifiable, Sendable {
 }
 
 enum BenchmarkPhase: Equatable, Sendable {
-    case idle, preparing, writing, reading, finished
+    case idle, preparing, writing, reading, stopping, finished
     case failed(String)
 
     var title: String {
@@ -47,6 +47,7 @@ enum BenchmarkPhase: Equatable, Sendable {
         case .preparing: return "ПОДГОТОВКА"
         case .writing: return "ЗАПИСЬ"
         case .reading: return "ЧТЕНИЕ"
+        case .stopping: return "ОСТАНОВКА"
         case .finished: return "ГОТОВО"
         case .failed: return "ОШИБКА"
         }
@@ -58,6 +59,9 @@ struct BenchmarkUpdate: Sendable {
     let currentMBps: Double
     let progress: Double
     let transferredBytes: Int64
+    let totalBytes: Int64
+    let elapsedSeconds: Double?
+    let idleSeconds: Double?
     let stage: String
     let completedMetric: BenchmarkMetric?
 }
@@ -80,6 +84,31 @@ struct BenchmarkResult: Sendable {
     let metrics: [BenchmarkMetric]
     let recommendationWriteMBps: Double?
     let recommendationReadMBps: Double?
+    let metadata: BenchmarkMetadata?
+
+    init(
+        writeMBps: Double, readMBps: Double, metrics: [BenchmarkMetric],
+        recommendationWriteMBps: Double?, recommendationReadMBps: Double?,
+        metadata: BenchmarkMetadata? = nil
+    ) {
+        self.writeMBps = writeMBps
+        self.readMBps = readMBps
+        self.metrics = metrics
+        self.recommendationWriteMBps = recommendationWriteMBps
+        self.recommendationReadMBps = recommendationReadMBps
+        self.metadata = metadata
+    }
+}
+
+struct BenchmarkMetadata: Sendable {
+    let engine: String
+    let fileSystem: String?
+    let testedBytes: Int64?
+    let writeSeconds: Double?
+    let syncSeconds: Double?
+    let readSeconds: Double?
+    let adaptive: Bool
+    let algorithmVersion: Int
 }
 
 enum BenchmarkError: LocalizedError {
@@ -139,7 +168,7 @@ enum BenchmarkEngine {
         reporter: @escaping Reporter
     ) async throws -> BenchmarkResult {
         try Task.checkCancellation()
-        await reporter(.init(phase: .preparing, currentMBps: 0, progress: 0, transferredBytes: 0, stage: "Проверка диска", completedMetric: nil))
+        await reporter(.init(phase: .preparing, currentMBps: 0, progress: 0, transferredBytes: 0, totalBytes: byteCount, elapsedSeconds: nil, idleSeconds: nil, stage: "Проверка диска", completedMetric: nil))
 
         let values = try? volumeURL.resourceValues(forKeys: [.volumeIsReadOnlyKey, .volumeIsLocalKey])
         if let error = preflightError(at: volumeURL, declaredReadOnly: values?.volumeIsReadOnly == true, byteCount: byteCount) {
@@ -162,6 +191,8 @@ enum BenchmarkEngine {
         await reporter(.init(
             phase: .preparing, currentMBps: 0, progress: 0,
             transferredBytes: 0,
+            totalBytes: byteCount,
+            elapsedSeconds: nil, idleSeconds: nil,
             stage: values?.volumeIsLocal == false
                 ? "Создаём тестовый файл на сетевом диске"
                 : "Выделяем место для тестового файла",
@@ -233,13 +264,15 @@ enum BenchmarkEngine {
                 phase: .preparing, currentMBps: readMedian,
                 progress: Double(profileIndex + 1) / Double(profiles.count),
                 transferredBytes: byteCount,
+                totalBytes: byteCount,
+                elapsedSeconds: nil, idleSeconds: nil,
                 stage: "Профиль завершён", completedMetric: metric
             ))
         }
 
         guard let primary = primaryMetric(in: metrics, mode: mode) else { throw BenchmarkError.cancelled }
         let stable = metrics.first(where: { $0.id == "seq-q1" })
-        await reporter(.init(phase: .finished, currentMBps: primary.readMBps, progress: 1, transferredBytes: byteCount, stage: "Тест завершён", completedMetric: nil))
+        await reporter(.init(phase: .finished, currentMBps: primary.readMBps, progress: 1, transferredBytes: byteCount, totalBytes: byteCount, elapsedSeconds: nil, idleSeconds: nil, stage: "Тест завершён", completedMetric: nil))
         return .init(
             writeMBps: primary.writeMBps, readMBps: primary.readMBps, metrics: metrics,
             recommendationWriteMBps: stable?.writeMBps,
@@ -395,7 +428,8 @@ enum BenchmarkEngine {
                     phase: phase,
                     currentMBps: Double(completedBytes) / 1_000_000 / max(seconds, 0.000_001),
                     progress: Double(completedOps) / Double(operationCount),
-                    transferredBytes: completedBytes, stage: stage,
+                    transferredBytes: completedBytes, totalBytes: byteCount,
+                    elapsedSeconds: seconds, idleSeconds: 0, stage: stage,
                     completedMetric: nil
                 ))
                 lastReport = now

@@ -87,6 +87,7 @@ struct Speedometer: View {
         switch phase {
         case .writing: return .orange
         case .reading, .finished: return .cyan
+        case .stopping: return .red
         case .failed: return .red
         default: return .secondary
         }

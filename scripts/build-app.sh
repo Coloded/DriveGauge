@@ -9,6 +9,10 @@ bash scripts/build-icon.sh
 SDK_15_4="/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk"
 if [[ -d "$SDK_15_4" ]]; then
     export SDKROOT="$SDK_15_4"
+elif [[ -d "/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk" ]]; then
+    # Current Command Line Tools compiler is compatible with this installed SDK,
+    # while the unversioned macOS 27 SDK may belong to a different tool build.
+    export SDKROOT="/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk"
 fi
 BUILD_DIR="/private/tmp/drivegauge-swift-build"
 TARGET_ARCH="arm64"
@@ -28,19 +32,21 @@ STAGED_APP="$STAGE_ROOT/DriveGauge.app"
 BIN_DIR="$STAGED_APP/Contents/MacOS"
 RESOURCE_DIR="$STAGED_APP/Contents/Resources"
 FRAMEWORK_DIR="$STAGED_APP/Contents/Frameworks"
+HELPERS_DIR="$STAGED_APP/Contents/Helpers"
 
 # exFAT stores extended attributes in AppleDouble `._*` files. Signing the
 # bundle directly there can make LaunchServices reject an otherwise valid app.
 # Assemble and sign on APFS first, then copy the sealed bundle without xattrs.
 rm -rf "$STAGE_ROOT"
-mkdir -p "$BIN_DIR" "$RESOURCE_DIR" "$FRAMEWORK_DIR"
+mkdir -p "$BIN_DIR" "$RESOURCE_DIR" "$FRAMEWORK_DIR" "$HELPERS_DIR"
 COPYFILE_DISABLE=1 cp "$BUILD_DIR/release/DriveGauge" "$BIN_DIR/DriveGauge"
+COPYFILE_DISABLE=1 cp "$BUILD_DIR/release/DriveGaugeNetworkWorker" "$HELPERS_DIR/DriveGaugeNetworkWorker"
 COPYFILE_DISABLE=1 cp "Resources/Info.plist" "$STAGED_APP/Contents/Info.plist"
 COPYFILE_DISABLE=1 cp "Resources/DriveGaugeIconV2.icns" "$RESOURCE_DIR/DriveGaugeIconV2.icns"
 COPYFILE_DISABLE=1 ditto --norsrc "$SPARKLE_FRAMEWORK" "$FRAMEWORK_DIR/Sparkle.framework"
 COPYFILE_DISABLE=1 cp "$SPARKLE_ROOT/LICENSE" "$RESOURCE_DIR/Sparkle-LICENSE.txt"
 find "$STAGED_APP" -name '._*' -type f -delete
-chmod 755 "$STAGED_APP" "$STAGED_APP/Contents" "$BIN_DIR" "$RESOURCE_DIR" "$FRAMEWORK_DIR" "$BIN_DIR/DriveGauge"
+chmod 755 "$STAGED_APP" "$STAGED_APP/Contents" "$BIN_DIR" "$RESOURCE_DIR" "$FRAMEWORK_DIR" "$HELPERS_DIR" "$BIN_DIR/DriveGauge" "$HELPERS_DIR/DriveGaugeNetworkWorker"
 codesign --force --deep --sign - "$STAGED_APP"
 
 rm -rf "$APP_DIR"
@@ -51,6 +57,11 @@ find "$APP_DIR" -name '._*' -type f -delete
 BUILT_ARCHS="$(lipo -archs "$APP_DIR/Contents/MacOS/DriveGauge")"
 if [[ "$BUILT_ARCHS" != "$TARGET_ARCH" ]]; then
     echo "Ошибка: ожидалась архитектура $TARGET_ARCH, получено: $BUILT_ARCHS" >&2
+    exit 1
+fi
+HELPER_ARCHS="$(lipo -archs "$APP_DIR/Contents/Helpers/DriveGaugeNetworkWorker")"
+if [[ "$HELPER_ARCHS" != "$TARGET_ARCH" ]]; then
+    echo "Ошибка: helper ожидался $TARGET_ARCH, получено: $HELPER_ARCHS" >&2
     exit 1
 fi
 

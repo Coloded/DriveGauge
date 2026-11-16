@@ -296,9 +296,13 @@ struct ContentView: View {
         case .reading:
             return "\(model.currentStage) • чтение \(percentage)%"
         case .finished:
-            return "Тест завершён • временный файл удалён"
+            return model.selectedVolume?.isLocal == false
+                ? "Тест завершён • измерен путь Mac → сеть → сервер → файловая система/накопитель"
+                : "Тест завершён • временный файл удалён"
         default:
-            return "Будет создан и автоматически удалён временный файл \(model.testSize.title)"
+            return model.selectedVolume?.isLocal == false
+                ? "Измеряется весь путь: Mac → сеть → сервер → файловая система/накопитель"
+                : "Будет создан и автоматически удалён временный файл \(model.testSize.title)"
         }
     }
 
@@ -307,9 +311,11 @@ struct ContentView: View {
         case .preparing:
             return model.currentStage
         case .writing:
-            return "Записано \(transferredText)"
+            return "Записано \(transferredText)\(timingText)"
         case .reading:
-            return "Прочитано \(transferredText)"
+            return "Прочитано \(transferredText)\(timingText)"
+        case .stopping:
+            return "Останавливаем worker и удаляем временный файл"
         default:
             return nil
         }
@@ -319,10 +325,20 @@ struct ContentView: View {
         let completed = model.transferredBytes.formatted(
             .number.grouping(.automatic).locale(Locale(identifier: "ru_RU"))
         )
-        let total = model.testSize.rawValue.formatted(
+        let total = model.transferTotalBytes.formatted(
             .number.grouping(.automatic).locale(Locale(identifier: "ru_RU"))
         )
         return "\(completed) байт из \(total)"
+    }
+
+    private var timingText: String {
+        if let idle = model.idleSeconds, idle >= 3 { return " · нет передачи \(Int(idle)) с" }
+        guard let elapsed = model.elapsedSeconds else { return "" }
+        let remainingBytes = max(0, model.transferTotalBytes - model.transferredBytes)
+        let remaining = model.currentSpeed > 0
+            ? Int((Double(remainingBytes) / 1_000_000 / model.currentSpeed).rounded())
+            : 0
+        return remaining > 0 ? " · \(Int(elapsed)) с · осталось ≈\(remaining) с" : " · \(Int(elapsed)) с"
     }
 }
 

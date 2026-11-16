@@ -1,5 +1,6 @@
 import CSQLite
 import Foundation
+import BenchmarkPersistence
 
 struct StoredBenchmark: Identifiable, Sendable {
     let id: Int64
@@ -80,26 +81,7 @@ final class BenchmarkStore {
         }
         try execute("PRAGMA journal_mode=WAL;")
         try execute("PRAGMA foreign_keys=ON;")
-        try execute(
-            """
-            CREATE TABLE IF NOT EXISTS benchmark_tests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                volume_id TEXT NOT NULL,
-                volume_name TEXT NOT NULL,
-                created_at REAL NOT NULL,
-                mode TEXT NOT NULL,
-                size_bytes INTEGER NOT NULL,
-                write_mbps REAL NOT NULL,
-                read_mbps REAL NOT NULL,
-                recommendation_write REAL,
-                recommendation_read REAL,
-                metrics_json BLOB NOT NULL
-            );
-            """
-        )
-        try execute(
-            "CREATE INDEX IF NOT EXISTS benchmark_tests_volume_date ON benchmark_tests(volume_id, created_at DESC);"
-        )
+        try BenchmarkStoreSchema.migrate(database)
     }
 
     deinit {
@@ -118,8 +100,10 @@ final class BenchmarkStore {
             INSERT INTO benchmark_tests (
                 volume_id, volume_name, created_at, mode, size_bytes,
                 write_mbps, read_mbps, recommendation_write,
-                recommendation_read, metrics_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                recommendation_read, metrics_json, engine, filesystem,
+                tested_bytes, write_seconds, sync_seconds, read_seconds,
+                adaptive, algorithm_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """
         let metrics = try encoder.encode(result.metrics.map(StoredMetric.init))
         let statement = try prepare(sql)
@@ -137,6 +121,16 @@ final class BenchmarkStore {
         _ = metrics.withUnsafeBytes { bytes in
             sqlite3_bind_blob(statement, 10, bytes.baseAddress, Int32(bytes.count), transient)
         }
+        bind(result.metadata?.engine, to: 11, in: statement)
+        bind(result.metadata?.fileSystem, to: 12, in: statement)
+        bind(result.metadata?.testedBytes, to: 13, in: statement)
+        bind(result.metadata?.writeSeconds, to: 14, in: statement)
+        bind(result.metadata?.syncSeconds, to: 15, in: statement)
+        bind(result.metadata?.readSeconds, to: 16, in: statement)
+        if let adaptive = result.metadata?.adaptive { sqlite3_bind_int(statement, 17, adaptive ? 1 : 0) }
+        else { sqlite3_bind_null(statement, 17) }
+        if let version = result.metadata?.algorithmVersion { sqlite3_bind_int(statement, 18, Int32(version)) }
+        else { sqlite3_bind_null(statement, 18) }
 
         guard sqlite3_step(statement) == SQLITE_DONE else { throw lastError() }
         return sqlite3_last_insert_rowid(database)
@@ -146,7 +140,9 @@ final class BenchmarkStore {
         let sql = """
             SELECT id, volume_id, volume_name, created_at, mode, size_bytes,
                    write_mbps, read_mbps, recommendation_write,
-                   recommendation_read, metrics_json
+                   recommendation_read, metrics_json, engine, filesystem,
+                   tested_bytes, write_seconds, sync_seconds, read_seconds,
+                   adaptive, algorithm_version
             FROM benchmark_tests
             WHERE volume_id = ?
             ORDER BY created_at DESC, id DESC
@@ -167,12 +163,26 @@ final class BenchmarkStore {
 
             let recommendationWrite = nullableDouble(statement, 8)
             let recommendationRead = nullableDouble(statement, 9)
+            let metadata: BenchmarkMetadata?
+            if sqlite3_column_type(statement, 11) != SQLITE_NULL {
+                metadata = .init(
+                    engine: text(statement, 11),
+                    fileSystem: nullableText(statement, 12),
+                    testedBytes: nullableInt64(statement, 13),
+                    writeSeconds: nullableDouble(statement, 14),
+                    syncSeconds: nullableDouble(statement, 15),
+                    readSeconds: nullableDouble(statement, 16),
+                    adaptive: sqlite3_column_type(statement, 17) != SQLITE_NULL && sqlite3_column_int(statement, 17) != 0,
+                    algorithmVersion: sqlite3_column_type(statement, 18) == SQLITE_NULL ? 0 : Int(sqlite3_column_int(statement, 18))
+                )
+            } else { metadata = nil }
             let result = BenchmarkResult(
                 writeMBps: sqlite3_column_double(statement, 6),
                 readMBps: sqlite3_column_double(statement, 7),
                 metrics: storedMetrics.map(\.metric),
                 recommendationWriteMBps: recommendationWrite,
-                recommendationReadMBps: recommendationRead
+                recommendationReadMBps: recommendationRead,
+                metadata: metadata
             )
             records.append(.init(
                 id: sqlite3_column_int64(statement, 0),
@@ -205,6 +215,16 @@ final class BenchmarkStore {
         else { sqlite3_bind_null(statement, index) }
     }
 
+    private func bind(_ value: Int64?, to index: Int32, in statement: OpaquePointer) {
+        if let value { sqlite3_bind_int64(statement, index, value) }
+        else { sqlite3_bind_null(statement, index) }
+    }
+
+    private func bind(_ value: String?, to index: Int32, in statement: OpaquePointer) {
+        if let value { bind(value, to: index, in: statement) }
+        else { sqlite3_bind_null(statement, index) }
+    }
+
     private func text(_ statement: OpaquePointer, _ index: Int32) -> String {
         guard let pointer = sqlite3_column_text(statement, index) else { return "" }
         return String(cString: pointer)
@@ -212,6 +232,14 @@ final class BenchmarkStore {
 
     private func nullableDouble(_ statement: OpaquePointer, _ index: Int32) -> Double? {
         sqlite3_column_type(statement, index) == SQLITE_NULL ? nil : sqlite3_column_double(statement, index)
+    }
+
+    private func nullableInt64(_ statement: OpaquePointer, _ index: Int32) -> Int64? {
+        sqlite3_column_type(statement, index) == SQLITE_NULL ? nil : sqlite3_column_int64(statement, index)
+    }
+
+    private func nullableText(_ statement: OpaquePointer, _ index: Int32) -> String? {
+        sqlite3_column_type(statement, index) == SQLITE_NULL ? nil : text(statement, index)
     }
 
     private func lastError() -> BenchmarkStoreError {
